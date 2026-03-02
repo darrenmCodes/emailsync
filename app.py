@@ -112,10 +112,15 @@ if "code" in params and params.get("state", "").startswith("linkedin_"):
         if params["state"] == expected_state:
             try:
                 from linkedin_client import exchange_code
+                _cb_db = Database(_db_path(st.session_state["user_email"]))
+                _cb_li_id = _cb_db.get_meta("linkedin_client_id") or getattr(config, "LINKEDIN_CLIENT_ID", "") or ""
+                _cb_li_secret = _cb_db.get_meta("linkedin_client_secret") or getattr(config, "LINKEDIN_CLIENT_SECRET", "") or ""
+                _cb_li_redirect = _cb_db.get_meta("linkedin_redirect_uri") or getattr(config, "LINKEDIN_REDIRECT_URI", None) or _get_redirect_uri()
+                _cb_db.close()
                 token_data = exchange_code(
-                    client_id=getattr(config, "LINKEDIN_CLIENT_ID", ""),
-                    client_secret=getattr(config, "LINKEDIN_CLIENT_SECRET", ""),
-                    redirect_uri=getattr(config, "LINKEDIN_REDIRECT_URI", None) or _get_redirect_uri(),
+                    client_id=_cb_li_id,
+                    client_secret=_cb_li_secret,
+                    redirect_uri=_cb_li_redirect,
                     code=params["code"],
                 )
                 _save_linkedin_token(st.session_state["user_email"], token_data)
@@ -298,20 +303,53 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"LinkedIn sync failed: {e}")
     else:
-        li_client_id = getattr(config, "LINKEDIN_CLIENT_ID", None)
+        li_client_id = db.get_meta("linkedin_client_id") or getattr(config, "LINKEDIN_CLIENT_ID", None)
         if li_client_id:
             from linkedin_client import get_auth_url
+            li_secret = db.get_meta("linkedin_client_secret") or getattr(config, "LINKEDIN_CLIENT_SECRET", "")
+            li_redirect = db.get_meta("linkedin_redirect_uri") or getattr(config, "LINKEDIN_REDIRECT_URI", None) or _get_redirect_uri()
             state = f"linkedin_{secrets.token_urlsafe(16)}"
             st.session_state["linkedin_state"] = state
-            redirect = getattr(config, "LINKEDIN_REDIRECT_URI", None) or _get_redirect_uri()
-            li_auth_url = get_auth_url(li_client_id, redirect, state)
+            li_auth_url = get_auth_url(li_client_id, li_redirect, state)
             st.link_button("Sign in with LinkedIn", li_auth_url)
         else:
-            st.caption("Set LINKEDIN_CLIENT_ID in .env to enable")
+            st.caption("Configure LinkedIn credentials below to enable")
 
     li_conn_count = db.get_linkedin_connection_count()
     if li_conn_count:
         st.caption(f"{li_conn_count} connections stored")
+
+    with st.expander("LinkedIn App Settings"):
+        saved_li_client_id = db.get_meta("linkedin_client_id") or ""
+        saved_li_client_secret = db.get_meta("linkedin_client_secret") or ""
+        saved_li_redirect_uri = db.get_meta("linkedin_redirect_uri") or ""
+
+        li_client_id_input = st.text_input(
+            "LinkedIn Client ID",
+            value=saved_li_client_id,
+            help="From LinkedIn Developer Portal",
+            key="linkedin_client_id",
+        )
+        li_client_secret_input = st.text_input(
+            "LinkedIn Client Secret",
+            value=saved_li_client_secret,
+            type="password",
+            help="From LinkedIn Developer Portal",
+            key="linkedin_client_secret",
+        )
+        li_redirect_uri_input = st.text_input(
+            "Redirect URI",
+            value=saved_li_redirect_uri or _get_redirect_uri(),
+            help="Must match the redirect URI in your LinkedIn app",
+            key="linkedin_redirect_uri",
+        )
+
+        if st.button("Save LinkedIn App Settings"):
+            db.set_meta("linkedin_client_id", li_client_id_input.strip())
+            db.set_meta("linkedin_client_secret", li_client_secret_input.strip())
+            db.set_meta("linkedin_redirect_uri", li_redirect_uri_input.strip())
+            st.success("Saved!")
+            st.rerun()
 
     # ── Filters ───────────────────────────────────────────────────────────
     st.divider()
