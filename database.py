@@ -38,6 +38,17 @@ CREATE TABLE IF NOT EXISTS metadata (
     key     TEXT PRIMARY KEY,
     value   TEXT
 );
+
+CREATE TABLE IF NOT EXISTS linkedin_connections (
+    linkedin_url    TEXT PRIMARY KEY,
+    first_name      TEXT,
+    last_name       TEXT,
+    email           TEXT,
+    company         TEXT,
+    position        TEXT,
+    connected_on    TEXT,
+    updated_at      TEXT
+);
 """
 
 
@@ -180,6 +191,52 @@ class Database:
             (email, cutoff, days),
         ).fetchone()
         return row["cnt"] if row else 0
+
+    # -- LinkedIn connections --
+
+    def store_linkedin_connection(
+        self,
+        linkedin_url: str,
+        first_name: str = "",
+        last_name: str = "",
+        email: str = "",
+        company: str = "",
+        position: str = "",
+        connected_on: str = "",
+    ):
+        """Upsert a LinkedIn connection."""
+        self.conn.execute(
+            """
+            INSERT INTO linkedin_connections
+                (linkedin_url, first_name, last_name, email, company, position, connected_on, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(linkedin_url) DO UPDATE SET
+                first_name = excluded.first_name,
+                last_name = excluded.last_name,
+                email = excluded.email,
+                company = excluded.company,
+                position = excluded.position,
+                connected_on = excluded.connected_on,
+                updated_at = excluded.updated_at
+            """,
+            (linkedin_url, first_name, last_name, email, company, position,
+             connected_on, datetime.now(timezone.utc).isoformat()),
+        )
+        self.conn.commit()
+
+    def get_all_linkedin_connections(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM linkedin_connections ORDER BY connected_on DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_linkedin_connection_count(self) -> int:
+        row = self.conn.execute(
+            "SELECT COUNT(*) as cnt FROM linkedin_connections"
+        ).fetchone()
+        return row["cnt"] if row else 0
+
+    # -- Email metrics --
 
     def get_affected_emails(self, since_timestamp: str | None = None) -> set[str]:
         """Get all unique recipient emails from emails processed since a timestamp."""
