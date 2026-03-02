@@ -113,9 +113,9 @@ if "code" in params and params.get("state", "").startswith("linkedin_"):
             try:
                 from linkedin_client import exchange_code
                 token_data = exchange_code(
-                    client_id=config.LINKEDIN_CLIENT_ID,
-                    client_secret=config.LINKEDIN_CLIENT_SECRET,
-                    redirect_uri=config.LINKEDIN_REDIRECT_URI or _get_redirect_uri(),
+                    client_id=getattr(config, "LINKEDIN_CLIENT_ID", ""),
+                    client_secret=getattr(config, "LINKEDIN_CLIENT_SECRET", ""),
+                    redirect_uri=getattr(config, "LINKEDIN_REDIRECT_URI", None) or _get_redirect_uri(),
                     code=params["code"],
                 )
                 _save_linkedin_token(st.session_state["user_email"], token_data)
@@ -298,12 +298,13 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"LinkedIn sync failed: {e}")
     else:
-        if config.LINKEDIN_CLIENT_ID:
+        li_client_id = getattr(config, "LINKEDIN_CLIENT_ID", None)
+        if li_client_id:
             from linkedin_client import get_auth_url
             state = f"linkedin_{secrets.token_urlsafe(16)}"
             st.session_state["linkedin_state"] = state
-            redirect = config.LINKEDIN_REDIRECT_URI or _get_redirect_uri()
-            li_auth_url = get_auth_url(config.LINKEDIN_CLIENT_ID, redirect, state)
+            redirect = getattr(config, "LINKEDIN_REDIRECT_URI", None) or _get_redirect_uri()
+            li_auth_url = get_auth_url(li_client_id, redirect, state)
             st.link_button("Sign in with LinkedIn", li_auth_url)
         else:
             st.caption("Set LINKEDIN_CLIENT_ID in .env to enable")
